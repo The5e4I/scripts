@@ -2,7 +2,7 @@ tool = {
     "type": "function",
     "function": {
         "name": "kiwix_list_books",
-        "description": "List available ZIM books on a Kiwix server. Can filter by language, category, tags, or search in title/description. Returns book metadata including name, uuid, title, and other properties.",
+        "description": "List all available ZIM books on a Kiwix server. Returns book metadata including name, uuid, title, and other properties.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -10,28 +10,6 @@ tool = {
                     "type": "string",
                     "description": "Base URL of the kiwix server (e.g., http://127.0.0.1:8088)",
                     "default": "http://127.0.0.1:8088"
-                },
-                "count": {
-                    "type": "integer",
-                    "description": "Number of entries to return. Use -1 for unlimited.",
-                    "default": -1
-                },
-                "start": {
-                    "type": "integer",
-                    "description": "Starting offset for pagination (default: 0).",
-                    "default": 0
-                },
-                "lang": {
-                    "type": "string",
-                    "description": "Filter by 3-letter language code (e.g., 'en', 'fr'). Comma-separated for multiple.",
-                },
-                "category": {
-                    "type": "string",
-                    "description": "Filter by category. Comma-separated for multiple.",
-                },
-                "tag": {
-                    "type": "string",
-                    "description": "Filter by tag. Semicolon-separated for AND conditions.",
                 },
                 "q": {
                     "type": "string",
@@ -46,11 +24,6 @@ tool = {
 
 def execute(arguments):
     base_url = arguments.get("base_url", "http://127.0.0.1:8088")
-    count = arguments.get("count", -1)
-    start = arguments.get("start", 0)
-    lang = arguments.get("lang")
-    category = arguments.get("category")
-    tag = arguments.get("tag")
     q = arguments.get("q")
 
     import urllib.parse
@@ -58,20 +31,9 @@ def execute(arguments):
 
     # Build URL with query parameters
     params = {
-        'start': start,
+        'count': -1,  # Return all entries
     }
 
-    if count != -1:
-        params['count'] = count
-    else:
-        params['count'] = -1  # Return all entries
-
-    if lang:
-        params['lang'] = lang
-    if category:
-        params['category'] = category
-    if tag:
-        params['tag'] = tag
     if q:
         params['q'] = q
 
@@ -122,12 +84,12 @@ def execute(arguments):
                 'title': title.text.strip() if title is not None and title.text else None,
                 'uuid': entry_id.text.split('/')[-1] if entry_id is not None and entry_id.text else None,
                 'name': None,
-                'language': [],
-                'category': [],
-                'tags': [],
-                'description': None,
-                'size': None,
-                'date': None
+                # 'language': [],
+                # 'category': [],
+                # 'tags': [],
+                # 'description': None,
+                # 'size': None,
+                # 'date': None
             }
 
             # Extract detailed metadata from link elements and other tags
@@ -140,34 +102,34 @@ def execute(arguments):
                         parts = href.strip('/').split('/')
                         if len(parts) >= 2:
                             book_info['name'] = parts[1]
-                elif child.tag == f'{{{ns["dc"]}}}language':
-                    if child.text:
-                        book_info['language'].append(child.text)
-                elif child.tag == f'{{{ns["dc"]}}}description':
-                    if child.text:
-                        book_info['description'] = child.text.strip()
-                elif child.tag == f'{{{ns["dc"]}}}format':
-                    if child.text and child.text.endswith('B'):
-                        book_info['size'] = int(child.text[:-1].replace(',', ''))
-                elif child.tag == f'{{{ns["dc"]}}}date':
-                    if child.text:
-                        book_info['date'] = child.text
-                elif child.tag == f'{{{ns["atom"]}}}category':
-                    # Tag elements start with underscore
-                    term = child.get('term', '')
-                    if term.startswith('_') and 'lang:' not in term and 'category:' not in term:
-                        book_info['tags'].append(term.lstrip('_'))
-
-            # Separate category from tags
-            all_terms = [c for c in categories]
-            book_info['category'] = [t.replace('category:', '').strip() for t in all_terms if 'category:' in t.lower()]
+            #     elif child.tag == f'{{{ns["dc"]}}}language':
+            #         if child.text:
+            #             book_info['language'].append(child.text)
+            #     elif child.tag == f'{{{ns["dc"]}}}description':
+            #         if child.text:
+            #             book_info['description'] = child.text.strip()
+            #     elif child.tag == f'{{{ns["dc"]}}}format':
+            #         if child.text and child.text.endswith('B'):
+            #             book_info['size'] = int(child.text[:-1].replace(',', ''))
+            #     elif child.tag == f'{{{ns["dc"]}}}date':
+            #         if child.text:
+            #             book_info['date'] = child.text
+            #     elif child.tag == f'{{{ns["atom"]}}}category':
+            #         # Tag elements start with underscore
+            #         term = child.get('term', '')
+            #         if term.startswith('_') and 'lang:' not in term and 'category:' not in term:
+            #             book_info['tags'].append(term.lstrip('_'))
+            #
+            # # Separate category from tags
+            # all_terms = [c for c in categories]
+            # book_info['category'] = [t.replace('category:', '').strip() for t in all_terms if 'category:' in t.lower()]
 
             books.append(book_info)
 
         return {
             "books": books,
-            "total": total_results,
-            "start": start_index,
+            # "total": total_results,
+            # "start": start_index,
             "count": len(books)
         }
 

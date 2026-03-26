@@ -8,7 +8,7 @@ tool = {
             "properties": {
                 "base_url": {
                     "type": "string",
-                    "description": "Base URL of the kiwix server (e.g., http://127.0.0.1:8088)",
+                    "description": "Base URL of the kiwix server",
                     "default": "http://127.0.0.1:8088"
                 },
                 "pattern": {
@@ -19,18 +19,6 @@ tool = {
                     "type": "string",
                     "description": "Specific book name to search in (from /catalog/v2/entries 'name' field). Repeatable for multiple books.",
                 },
-                "book_ids": {
-                    "type": "string",
-                    "description": "Book UUID(s) to search in. Comma-separated for multiple.",
-                },
-                "filter_lang": {
-                    "type": "string",
-                    "description": "Filter books by language before searching. Comma-separated codes.",
-                },
-                "filter_category": {
-                    "type": "string",
-                    "description": "Filter books by category. Comma-separated.",
-                },
                 "format": {
                     "type": "string",
                     "description": "Result format. Either 'html' or 'xml'.",
@@ -40,9 +28,9 @@ tool = {
                 "page_length": {
                     "type": "integer",
                     "description": "Max search results to return (max 140, default: 25).",
-                    "default": 25,
+                    "default": 5,
                     "minimum": 1,
-                    "maximum": 140
+                    "maximum": 20
                 },
                 "start": {
                     "type": "integer",
@@ -60,11 +48,8 @@ def execute(arguments):
     base_url = arguments.get("base_url", "http://127.0.0.1:8088")
     pattern = arguments.get("pattern", "")
     book_name = arguments.get("book_name")
-    book_ids = arguments.get("book_ids")
-    filter_lang = arguments.get("filter_lang")
-    filter_category = arguments.get("filter_category")
     format_type = arguments.get("format", "html")
-    page_length = arguments.get("page_length", 25)
+    page_length = arguments.get("page_length", 5)
     start = arguments.get("start", 0)
 
     import urllib.parse
@@ -82,21 +67,10 @@ def execute(arguments):
     # Book selection - prefer book_name over book_ids, filter_ over non-filter_
     if book_name:
         params['books.name'] = book_name
-    elif book_ids:
-        params['books.id'] = book_ids
-    elif filter_lang:
-        params['books.filter.lang'] = filter_lang
-    elif filter_category:
-        params['books.filter.category'] = filter_category
     # If none specified, search all books
 
-    if filter_lang and not book_name:
-        params['books.filter.lang'] = filter_lang
-    if filter_category and not book_name:
-        params['books.filter.category'] = filter_category
-
     if page_length:
-        params['pageLength'] = min(page_length, 140)  # Enforce max
+        params['pageLength'] = min(page_length, 20)  # Enforce max
     if start:
         params['start'] = start
 
@@ -113,16 +87,66 @@ def execute(arguments):
         result = {
             "format": format_type,
             "search_url": url,
-            "results": [],
-            "raw_response": ""
+            # "results": [],
+            # "raw_response": ""
         }
 
         if format_type == "xml":
-            result["xml_content"] = response.text
+            from lxml import etree
+            tree = etree.fromstring(response.text.encode())
+
+            contents = []
+
+            for item in tree.findall(".//channel/item"):
+                content = {
+                    "title": item.findtext("title"),
+                    "url": item.findtext("link"),
+                    "description": item.findtext("description"),
+                    # "book": item.findtext("book/title"),
+                    # "wordCount": item.findtext("wordCount"),
+                }
+                contents.append(content)
+
+            # Namespace map
+            ns = {
+                "opensearch": "http://a9.com/-/spec/opensearch/1.1/",
+                "atom": "http://www.w3.org/2005/Atom"
+            }
+
+            output = {
+                "description": tree.findtext(".//channel/description"),
+                "totalResults": tree.findtext(".//opensearch:totalResults", namespaces=ns),
+                "startIndex": tree.findtext(".//opensearch:startIndex", namespaces=ns),
+                "contents": contents
+            }
+
+            result["xml_content"] = output
         else:
             # Parse HTML for structured results
-            result["html_content"] = response.text
+            from lxml import html
+            tree = html.fromstring(response.text)
 
+            # Extract header info
+            header_text = tree.xpath('//div[@class="header"]//text()')
+            header_clean = " ".join(h.strip() for h in header_text if h.strip())
+
+            contents = []
+            items = tree.xpath('//div[@class="results"]/ul/li')
+            for item in items:
+                title = item.xpath('.//a/text()')
+                link = item.xpath('.//a/@href')
+                snippet = item.xpath('.//cite//text()')
+
+                content = {
+                    "title": title[0].strip() if title else None,
+                    "url": link[0] if link else None,
+                    "snippet": " ".join(s.strip() for s in snippet if s.strip()),
+                }
+
+                contents.append(content)
+
+            result["summary"] = header_clean
+            result["html_content"] = contents
         return result
 
     except requests.exceptions.RequestException as e:

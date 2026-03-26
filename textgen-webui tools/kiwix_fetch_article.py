@@ -38,7 +38,7 @@ tool = {
                     "default": False
                 }
             },
-            "required": ["base_url", "book_name"]
+            "required": ["base_url", "book_name", "path"]
         }
     }
 }
@@ -102,13 +102,13 @@ def execute(arguments):
         html_content = response.text
 
         # Convert to markdown if requested
-        content_to_process = html_content
+        content = html_content
 
         if convert_to_markdown:
             try:
                 # Import trafilatura like the fetch_webpage tool does
                 import trafilatura
-                content_to_process = trafilatura.extract(
+                content = trafilatura.extract(
                     html_content,
                     output_format='markdown',
                     url=url
@@ -120,9 +120,7 @@ def execute(arguments):
 
         # Truncate if token limit specified
         if max_tokens > 0:
-            content = truncate_content_by_tokens(content_to_process, max_tokens=max_tokens)
-        else:
-            content = content_to_process
+            content = truncate_content_by_tokens(content, max_tokens=max_tokens)
 
         # Extract title from response if possible
         import re
@@ -136,15 +134,17 @@ def execute(arguments):
             if h1_match:
                 title = h1_match.group(1).strip()
 
-        return {
-            "title": title,
-            "book_name": book_name,
-            "url": url,
-            "path": path if path else "/",
-            "content": content,
-            "raw_content": html_content if not convert_to_markdown else None,
-            "size_chars": len(content)
-        }
+        return content if convert_to_markdown else html_content
+
+        # return {
+        #     "title": title,
+        #     "book_name": book_name,
+        #     "url": url,
+        #     "path": path if path else "/",
+        #     "content": content,
+        #     "raw_content": html_content if not convert_to_markdown else None,
+        #     "size_chars": len(content)
+        # }
 
     except requests.exceptions.RequestException as e:
         return {
